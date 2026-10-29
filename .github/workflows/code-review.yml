@@ -1,0 +1,38 @@
+# AI 代码评审（阿里开源的 Open Code Review）：
+#   PR 时自动跑「确定性流水线 + LLM」的行级评审，结果以 PR 评论呈现。
+# 首次使用前请配置三个 repository secrets（见 README「AI Code Review」一节）：
+#   OCR_LLM_URL / OCR_LLM_TOKEN / OCR_LLM_MODEL
+# 未配置时该 job 自动跳过，不影响 CI 绿灯。
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    env:
+      LLM_READY: ${{ secrets.OCR_LLM_TOKEN != '' && secrets.OCR_LLM_URL != '' && secrets.OCR_LLM_MODEL != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 评审需要完整历史做 diff
+
+      - name: Open Code Review
+        if: env.LLM_READY == 'true'
+        uses: alibaba/open-code-review@v1.13.3
+        with:
+          llm_url: ${{ secrets.OCR_LLM_URL }}
+          llm_auth_token: ${{ secrets.OCR_LLM_TOKEN }}
+          llm_model: ${{ secrets.OCR_LLM_MODEL }}
+          llm_protocol: openai
+          language: Chinese
+
+      - name: Skipped (secrets not configured)
+        if: env.LLM_READY != 'true'
+        run: echo '未配置 OCR_LLM_* secrets，跳过 AI 评审；配置方法见 README。'

@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: build (${{ matrix.compiler.cc }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { cc: gcc, cxx: g++ }
+          - { cc: clang, cxx: clang++ }
+    env:
+      CC: ${{ matrix.compiler.cc }}
+      CXX: ${{ matrix.compiler.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          if [ "$CC" = "clang" ]; then sudo apt-get install -y clang; fi
+
+      - name: Configure
+        run: cmake --preset default
+
+      - name: Build
+        run: cmake --build --preset default
+
+      - name: Unit tests
+        run: ctest --preset default
+
+      - name: Run demos
+        run: |
+          ./build/default/fork_exec_demo
+          ./build/default/raii_demo
+          ./build/default/process_pool
+
+  clang-tidy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang-tidy
+
+      - name: Configure (generate compile_commands.json)
+        run: cmake --preset default
+
+      - name: Run clang-tidy on all sources
+        run: |
+          mapfile -t files < <(find src tests -name '*.cpp' | sort)
+          clang-tidy -p build/default --quiet "${files[@]}" 2>&1 | tee tidy.log
+
+      - name: Report
+        run: |
+          warnings=$(grep -c 'warning:' tidy.log || true)
+          echo "clang-tidy 报告了 $warnings 个警告（详见上方日志）"
+          # 练习：想让 CI 对警告零容忍，取消下面两行注释
+          # if [ "$warnings" -ne 0 ]; then exit 1; fi
+
+  sanitize:
+    name: asan + ubsan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: cmake --preset asan
+
+      - name: Build
+        run: cmake --build --preset asan
+
+      - name: Unit tests (sanitized)
+        run: ctest --preset asan
+
+      - name: Run demos (sanitized)
+        run: |
+          ./build/asan/fork_exec_demo
+          ./build/asan/raii_demo
+          ./build/asan/process_pool
