@@ -2,6 +2,9 @@
 build/
 out/
 
+# ctest 运行记录
+Testing/
+
 # 由 CMake 生成、clang-tidy/clangd 使用
 compile_commands.json
 

@@ -1,0 +1,36 @@
+# cpp-playground 服务栈（系统部署工程师练习）：
+#   up：docker compose -f deploy/docker-compose.yml up -d --build
+#   与本机 dev-stack（~/dev-stack）的 Prometheus 打通：加入其外部网络，/metrics 被自动抓取，
+#   在 Grafana（localhost:3000）Explore 里查 playground_http_requests_total 即见数据。
+#
+# 练习重点：
+#   1. external network 是「跨 compose 栈互联」的标准做法（服务发现靠 DNS 别名）；
+#   2. healthcheck + depends_on.condition: service_healthy 的启动顺序编排；
+#   3. 资源上限（mem_limit/cpus）：单机版的「资源配额」，对照 K8s 的 requests/limits。
+name: cpp-playground
+
+networks:
+  dev-stack:
+    external: true   # 由 ~/dev-stack/docker-compose.yml 创建；先起服务栈再起本栈
+
+services:
+  http-demo:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: cpp-playground:http-demo
+    container_name: cpp-playground-http
+    restart: unless-stopped
+    ports:
+      - "18080:18080"
+    networks:
+      - default
+      - dev-stack      # 让 dev-stack 的 Prometheus 能按容器名抓到本服务
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 128M
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

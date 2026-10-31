@@ -1,0 +1,37 @@
+# systemd 服务单元示例（系统部署工程师：裸机/虚拟机部署的标准形态）
+# 安装：
+#   sudo cp deploy/systemd/http-demo.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now http-demo
+# 观察：
+#   systemctl status http-demo
+#   journalctl -u http-demo -f          # spdlog 的 stdout 被 journald 接管
+#   curl localhost:18080/metrics
+#
+# 练习重点：
+#   1. Restart=on-failure vs always vs no：崩溃自愈策略的取舍；
+#   2. Type=simple/exec 的区别（exec 确认二进制真的跑起来了才算启动完成）；
+#   3. 加 [Unit] After=network-online.target + WantedBy 时序依赖；
+#   4. Security= 面的加固：ProtectSystem=strict / NoNewPrivileges=true（对照容器的非 root）。
+
+[Unit]
+Description=cpp-playground http demo (observable REST service)
+Documentation=https://github.com/guoyulong1/cpp-playground
+After=network.target
+
+[Service]
+Type=exec
+# 以专用低权用户运行（先 useradd --system --no-create-home playground）
+User=playground
+Group=playground
+ExecStart=/usr/local/bin/http_server serve 18080
+Restart=on-failure
+RestartSec=2s
+# 资源与安全基线（练习：逐项关掉对比 behavior）
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

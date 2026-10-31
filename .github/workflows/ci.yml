@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build
+          sudo apt-get install -y ninja-build protobuf-compiler libprotobuf-dev
           if [ "$CC" = "clang" ]; then sudo apt-get install -y clang; fi
 
       - name: Configure
@@ -46,6 +46,13 @@ jobs:
           ./build/default/fork_exec_demo
           ./build/default/raii_demo
           ./build/default/process_pool
+          ./build/default/memory_optimization_demo
+          ./build/default/algorithm_optimization_demo
+          ./build/default/thread_pool_demo
+          ./build/default/echo_server
+          ./build/default/http_server
+          ./build/default/serialization_benchmark
+          ./build/default/zmq_patterns_demo
 
   clang-tidy:
     runs-on: ubuntu-24.04
@@ -81,7 +88,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build
+          sudo apt-get install -y ninja-build protobuf-compiler libprotobuf-dev
 
       - name: Configure
         run: cmake --preset asan
@@ -97,3 +104,35 @@ jobs:
           ./build/asan/fork_exec_demo
           ./build/asan/raii_demo
           ./build/asan/process_pool
+          ./build/asan/memory_optimization_demo
+          ./build/asan/algorithm_optimization_demo
+          ./build/asan/thread_pool_demo
+          ./build/asan/echo_server
+          ./build/asan/http_server
+          ./build/asan/serialization_benchmark
+          ./build/asan/zmq_patterns_demo
+
+  # ROS2 模块（条件编译）：官方 ROS 2 Humble 容器里构建并跑自测
+  ros2:
+    runs-on: ubuntu-24.04
+    container:
+      image: ros:humble
+    steps:
+      - name: Install build deps
+        run: |
+          apt-get update
+          apt-get install -y ninja-build protobuf-compiler libprotobuf-dev git
+
+      - uses: actions/checkout@v4
+
+      - name: Configure & build
+        run: |
+          source /opt/ros/humble/setup.bash
+          cmake -G Ninja -B build-ros -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_PREFIX_PATH=/opt/ros/humble -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          cmake --build build-ros --target ros2_demo
+
+      - name: Self test
+        run: |
+          source /opt/ros/humble/setup.bash
+          timeout 30 ./build-ros/ros2_demo

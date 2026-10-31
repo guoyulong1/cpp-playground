@@ -1,0 +1,61 @@
+# Ansible 最小部署剧本（系统部署工程师：批量配置管理的标准工具）
+# 目标：在目标机上把 http_server 跑成 systemd 服务（对应 deploy/systemd/http-demo.service）
+#
+# 用法（inventory 自备）：
+#   cd deploy/ansible
+#   ansible-playbook -i inventory.ini deploy-http.yml
+# 本机演练（connection=local，不需要真实远端）：
+#   ansible-playbook -i localhost, -c local deploy-http.yml -K
+#
+# 练习重点：
+#   1. 幂等性：反复跑剧本，changed 应该逐渐归零（shell 模块配 creates/args 才幂等）；
+#   2. handler 的延迟触发：notify 的 restart 只有配置变化才真正执行；
+#   3. 把「编译」也搬进剧本（compile 角色化），对照「本机构建+分发产物」两条路线的取舍；
+#   4. ansible-playbook --check --diff 干跑预演。
+---
+- name: 部署 cpp-playground http demo
+  hosts: all
+  become: true   # 需要 root 安装 systemd 单元与二进制
+  vars:
+    service_user: playground
+    install_dir: /usr/local/bin
+  tasks:
+    - name: 创建低权运行用户
+      ansible.builtin.user:
+        name: "{{ service_user }}"
+        system: true
+        create_home: false
+        shell: /usr/sbin/nologin
+
+    - name: 安装运行时依赖（protobuf 运行库）
+      ansible.builtin.apt:
+        name: libprotobuf23   # jammy；bookworm 是 libprotobuf-lite32，按发行版变量化是练习
+        state: present
+        update_cache: true
+
+    - name: 分发二进制（本演练从本仓库构建产物拷贝）
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../build/release/http_server"
+        dest: "{{ install_dir }}/http_server"
+        mode: "0755"
+      notify: 重启 http-demo
+
+    - name: 安装 systemd 单元
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../systemd/http-demo.service"
+        dest: /etc/systemd/system/http-demo.service
+        mode: "0644"
+      notify: 重启 http-demo
+
+    - name: 启动并设为开机自启
+      ansible.builtin.systemd:
+        name: http-demo
+        enabled: true
+        state: started
+        daemon_reload: true
+
+  handlers:
+    - name: 重启 http-demo
+      ansible.builtin.systemd:
+        name: http-demo
+        state: restarted

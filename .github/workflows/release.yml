@@ -1,0 +1,103 @@
+# Release 流水线（README TODO 落实）：打 tag 触发
+#   1. 构建 Linux Release 产物 → 上传 GitHub Releases
+#   2. 构建容器镜像 → 推送 GHCR（与 deploy/Dockerfile 同源）
+# 练习重点：
+#   - 软件供应链：tag→产物→镜像的溯源链（provenance/签名是进阶练习，见 SLSA）；
+#   - GHCR 镜像名自动继承仓库名：ghcr.io/<owner>/<repo>；
+#   - 想要 macOS/Windows 产物？给 build job 加 matrix（os: [ubuntu, macos]）。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write      # 创建 Release
+  packages: write      # 推送 GHCR
+
+jobs:
+  build-binaries:
+    name: build (${{ matrix.compiler.cc }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - { cc: gcc, cxx: g++ }
+          - { cc: clang, cxx: clang++ }
+    env:
+      CC: ${{ matrix.compiler.cc }}
+      CXX: ${{ matrix.compiler.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build protobuf-compiler libprotobuf-dev
+          if [ "$CC" = "clang" ]; then sudo apt-get install -y clang; fi
+
+      - name: Build (Release)
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+
+      - name: Package artifacts
+        run: |
+          dist="cpp-playground-${GITHUB_REF_NAME}-${CC}"
+          mkdir -p "dist/$dist"
+          cp build/release/{http_server,echo_server,serialization_benchmark,zmq_patterns_demo} "dist/$dist/"
+          tar -C dist -czf "dist/${dist}.tar.gz" "$dist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.compiler.cc }}
+          path: dist/*.tar.gz
+
+  github-release:
+    needs: build-binaries
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*.tar.gz
+
+  docker-image:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

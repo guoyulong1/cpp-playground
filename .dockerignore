@@ -1,0 +1,10 @@
+# docker build 上下文瘦身：缓存与产物进镜像轻则体积爆炸，重则污染构建（如 build/cn 的 CMakeCache）
+build/
+.git/
+.github/
+.mimosa/
+Testing/
+logs/
+*.log
+.clang-tidy
+CMakeUserPresets.json

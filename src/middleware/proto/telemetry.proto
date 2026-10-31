@@ -1,0 +1,26 @@
+// 传感器遥测消息：中间件方向序列化练习的载体。
+// 为什么用 proto3：字段编号前向兼容（新增字段旧读者跳过不报错）——
+// 这是 DDS/ROS2 消息（rosidl 底层同样用 IDL 思想）与 gRPC 的公共基石。
+syntax = "proto3";
+
+package playground.telemetry;
+
+// 一帧机器人遥测：模拟移动底盘 100Hz 上报
+message Frame {
+  uint64 timestamp_ns = 1;   // 单调时钟纳秒
+  string robot_id = 2;       // 高基数字段放消息体而不是 label/路由键
+  Pose pose = 3;
+  repeated double wheel_speed = 4;  // 四轮 m/s
+  Battery battery = 5;
+}
+
+message Pose {
+  double x = 1;
+  double y = 2;
+  double theta = 3;
+}
+
+message Battery {
+  double voltage = 1;        // V
+  uint32 soc_percent = 2;    // 0-100
+}
