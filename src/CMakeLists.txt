@@ -9,6 +9,7 @@ target_link_libraries(playground_core PUBLIC Threads::Threads spdlog::spdlog)
 
 # 各主题的 demo，每个都是独立可执行文件
 add_executable(fork_exec_demo process/fork_exec_demo.cpp)
+add_executable(fork_cost_demo process/fork_cost_demo.cpp)
 add_executable(process_pool process/process_pool.cpp)
 add_executable(raii_demo memory/raii_demo.cpp)
 add_executable(memory_optimization_demo memory/optimization_demo.cpp)

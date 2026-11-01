@@ -44,6 +44,7 @@ jobs:
       - name: Run demos
         run: |
           ./build/default/fork_exec_demo
+          ./build/default/fork_cost_demo
           ./build/default/raii_demo
           ./build/default/process_pool
           ./build/default/memory_optimization_demo
@@ -102,6 +103,7 @@ jobs:
       - name: Run demos (sanitized)
         run: |
           ./build/asan/fork_exec_demo
+          ./build/asan/fork_cost_demo
           ./build/asan/raii_demo
           ./build/asan/process_pool
           ./build/asan/memory_optimization_demo

@@ -20,7 +20,7 @@ C++ 练手场 → **四岗位能力实战仓库**：每个主题都有最小可�
 
 | 主题 | 位置 | 内容 |
 |---|---|---|
-| 进程管理 | `src/process/` | fork/exec/wait 闭环、多 worker 进程池（管道通信） |
+| 进程管理 | `src/process/` | fork/exec/wait 闭环、**COW 内存语义 / vfork / system+popen 解剖 / posix_spawn 代价基准**、多 worker 进程池 |
 | 内存管理 | `src/memory/`、`include/playground/` | RAII、智能指针、固定块内存池、内存优化实验 |
 | 算法改良 | `src/algo/` | 复杂度、扩容成本、访存模式三组对照实验 |
 | 线程池 | `src/thread/`、`include/playground/` | mutex+cv 线程池，future 传值传异常（带单测） |
@@ -55,7 +55,8 @@ cmake --preset cn && cmake --build --preset cn
 
 ```bash
 ./build/default/raii_demo                     # RAII / 智能指针
-./build/default/fork_exec_demo                # fork → exec → waitpid
+./build/default/fork_exec_demo                # fork 全家桶：COW / vfork / system+popen 解剖
+./build/default/fork_cost_demo                # fork vs posix_spawn 内存代价基准（512MB 实测）
 ./build/default/process_pool                  # 进程池 + 管道
 ./build/default/memory_optimization_demo      # 内存优化实验（release 构建看数量级）
 ./build/default/algorithm_optimization_demo   # 算法对照实验
@@ -99,7 +100,7 @@ sg docker -c "docker compose -f deploy/docker-compose.yml up -d"
 ├── cmake/ThirdParty.cmake               # FetchContent 依赖（fmt/spdlog/json/httplib/libzmq+cppzmq）
 ├── scripts/fetch-deps-cn.sh             # 被墙网络依赖预热（走镜像加速）
 ├── docs/                                # 每主题一份详细学习方案
-│   ├── middleware.md  ros2.md  deployment.md  （memory/thread/network/algorithm 同前）
+│   ├── middleware.md  ros2.md  deployment.md  process-fork.md  （memory/thread/network/algorithm 同前）
 ├── include/playground/
 │   ├── memory_pool.hpp  thread_pool.hpp
 │   ├── logger.hpp                       # spdlog 封装（双 sink）
@@ -116,11 +117,20 @@ sg docker -c "docker compose -f deploy/docker-compose.yml up -d"
 
 ## 练习主题与 TODO
 
-### 1. 进程管理（`src/process/`）
+### 1. 进程管理（`src/process/`）→ 方案见 [docs/process-fork.md](docs/process-fork.md)
 
-- `fork_exec_demo.cpp`：fork 出子进程 → exec 成 `/bin/echo` → waitpid 回收并解析退出状态。
+- `fork_exec_demo.cpp`：五个实验——① fork → exec → waitpid 闭环（含 wait 状态字编码）；
+  ② **fork 如何"拷贝"内存**：COW 写时复制（虚拟地址相同、写后分叉）；③ stdio 缓冲区被 fork
+  复制导致输出重复的陷阱；④ **vfork**：共享而非拷贝地址空间（与 ② 对照）；⑤ **system()/popen()
+  的真身**：手写 fork+exec+wait 复刻，与 glibc 版逐行对上。
+- `fork_cost_demo.cpp`：**fork 的内存代价 vs posix_spawn**——小内存基线 → 驻留 512MB 后 fork 慢
+  一个数量级（页表白拷）而 posix_spawn 纹丝不动（`clone(CLONE_VM|CLONE_VFORK)` 共享内存）→
+  子进程写穿 512MB 把 COW 延迟的拷贝真实付一遍账。
 - `process_pool.cpp`：父进程 fork 出 N 个 worker，每个 worker 一条任务管道，结果经共享管道写回。
 
+- [ ] 用 `strace -f -e trace=clone,execve,wait4 ./build/cn/fork_exec_demo` 观察：fork 其实是 clone 的封装
+- [ ] 把 fork_cost_demo 的「fork + exec」换成「vfork + exec」计时，与 posix_spawn 对比
+- [ ] 用 `/proc/<pid>/statm`（或 smem）观察 fork 前后父子进程的驻留内存与共享页
 - [ ] 给 `process_pool` 加 SIGINT 优雅退出（注册信号处理，先停派发再回收）
 - [ ] 用 `waitpid(WNOHANG)` 演示僵尸进程的产生与消灭
 - [ ] 把「轮流派发」改成 epoll 事件驱动
